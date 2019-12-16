@@ -1,0 +1,286 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+    "Description": "Stack defining DataPipeline backup of ${table_name} DynamoDB table",
+    "Resources": {
+        "DataPipelineDynamoDbBackup": {
+            "Type": "AWS::DataPipeline::Pipeline",
+            "Properties": {
+                "Activate": true,
+                "Description": "Pipeline to backup the ${table_name} DynamoDB table",
+                "Name": "${table_name} scheduled backup",
+                "ParameterObjects": [
+                    {
+                        "Attributes": [
+                            {
+                                "Key": "description",
+                                "StringValue": "Output S3 folder"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "AWS::S3::ObjectKey"
+                            }
+                        ],
+                        "Id": "myOutputS3Loc"
+                    },
+                    {
+                        "Attributes": [
+                            {
+                                "Key": "description",
+                                "StringValue": "Source DynamoDB table name"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "String"
+                            }
+                        ],
+                        "Id": "myDDBTableName"
+                    },
+                    {
+                        "Attributes": [
+                            {
+                                "Key": "default",
+                                "StringValue": "${read_throughput_ratio}"
+                            },
+                            {
+                                "Key": "description",
+                                "StringValue": "DynamoDB read throughput ratio"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "Double"
+                            }
+                        ],
+                        "Id": "myDDBReadThroughputRatio"
+                    },
+                    {
+                        "Attributes": [
+                            {
+                                "Key": "default",
+                                "StringValue": "${table_region}"
+                            },
+                            {
+                                "Key": "description",
+                                "StringValue": "Region of the DynamoDB table"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "String"
+                            }
+                        ],
+                        "Id": "myDDBRegion"
+                    }
+                ],
+                "ParameterValues": [
+                    {
+                        "Id": "myDDBRegion",
+                        "StringValue": "${table_region}"
+                    },
+                    {
+                        "Id": "myDDBTableName",
+                        "StringValue": "${table_name}"
+                    },
+                    {
+                        "Id": "myDDBReadThroughputRatio",
+                        "StringValue": "${read_throughput_ratio}"
+                    },
+                    {
+                        "Id": "myOutputS3Loc",
+                        "StringValue": "${s3_bucket}"
+                    }
+                ],
+                "PipelineObjects": [
+                    {
+                        "Fields": [
+                            {
+                                "Key": "subnetId",
+                                "StringValue": "${subnet_id}"
+                            },
+                            {
+                                "Key": "coreInstanceType",
+                                "StringValue": "m4.large"
+                            },
+                            {
+                                "Key": "onFail",
+                                "RefValue": "FailureSnsAlarm"
+                            },
+                            {
+                                "Key": "coreInstanceCount",
+                                "StringValue": "1"
+                            },
+                            {
+                                "Key": "releaseLabel",
+                                "StringValue": "emr-5.9.0"
+                            },
+                            {
+                                "Key": "masterInstanceType",
+                                "StringValue": "m4.large"
+                            },
+                            {
+                                "Key": "region",
+                                "StringValue": "${table_region}"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "EmrCluster"
+                            },
+                            {
+                                "Key": "terminateAfter",
+                                "StringValue": "${terminate_after}"
+                            }
+                        ],
+                        "Id": "EmrClusterForBackup",
+                        "Name": "EmrClusterForBackup"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "failureAndRerunMode",
+                                "StringValue": "CASCADE"
+                            },
+                            {
+                                "Key": "resourceRole",
+                                "StringValue": "${resource_role}"
+                            },
+                            {
+                                "Key": "role",
+                                "StringValue": "${default_role}"
+                            },
+                            {
+                                "Key": "pipelineLogUri",
+                                "StringValue": "${s3_bucket}/logs/"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "Default"
+                            },
+                            {
+                                "Key": "scheduleType",
+                                "StringValue": "cron"
+                            },
+                            {
+                                "Key": "schedule",
+                                "RefValue": "DefaultSchedule"
+                            }
+                        ],
+                        "Id": "Default",
+                        "Name": "Default"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "readThroughputPercent",
+                                "StringValue": "#{myDDBReadThroughputRatio}"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "DynamoDBDataNode"
+                            },
+                            {
+                                "Key": "tableName",
+                                "StringValue": "#{myDDBTableName}"
+                            }
+                        ],
+                        "Id": "DDBSourceTable",
+                        "Name": "DDBSourceTable"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "directoryPath",
+                                "StringValue": "#{myOutputS3Loc}/backups/#{format(@scheduledStartTime, 'YYYY-MM-dd-HH-mm-ss')}"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "S3DataNode"
+                            }
+                        ],
+                        "Id": "S3BackupLocation",
+                        "Name": "S3BackupLocation"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "output",
+                                "RefValue": "S3BackupLocation"
+                            },
+                            {
+                                "Key": "input",
+                                "RefValue": "DDBSourceTable"
+                            },
+                            {
+                                "Key": "onFail",
+                                "RefValue": "FailureSnsAlarm"
+                            },
+                            {
+                                "Key": "maximumRetries",
+                                "StringValue": "1"
+                            },
+                            {
+                                "Key": "step",
+                                "StringValue": "s3://dynamodb-emr-#{myDDBRegion}/emr-ddb-storage-handler/2.1.0/emr-ddb-2.1.0.jar,org.apache.hadoop.dynamodb.tools.DynamoDbExport,#{output.directoryPath},#{input.tableName},#{input.readThroughputPercent}"
+                            },
+                            {
+                                "Key": "runsOn",
+                                "RefValue": "EmrClusterForBackup"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "EmrActivity"
+                            },
+                            {
+                                "Key": "resizeClusterBeforeRunning",
+                                "StringValue": "false"
+                            }
+                        ],
+                        "Id": "TableBackupActivity",
+                        "Name": "TableBackupActivity"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "role",
+                                "StringValue": "${default_role}"
+                            },
+                            {
+                                "Key": "subject",
+                                "StringValue": "Data Pipeline Backup Error"
+                            },
+                            {
+                                "Key": "message",
+                                "StringValue": "DataPipeline failed to backup table: ${table_name}"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "SnsAlarm"
+                            },
+                            {
+                                "Key": "topicArn",
+                                "StringValue": "${sns_topic_arn}"
+                            }
+                        ],
+                        "Id": "FailureSnsAlarm",
+                        "Name": "FailureSnsAlarm"
+                    },
+                    {
+                        "Fields": [
+                            {
+                                "Key": "startAt",
+                                "StringValue": "FIRST_ACTIVATION_DATE_TIME"
+                            },
+                            {
+                                "Key": "period",
+                                "StringValue": "${schedule_period}"
+                            },
+                            {
+                                "Key": "type",
+                                "StringValue": "Schedule"
+                            }
+                        ],
+                        "Id": "DefaultSchedule",
+                        "Name": "DefaultSchedule"
+                    }
+                ]
+            }
+        }
+    }
+}
